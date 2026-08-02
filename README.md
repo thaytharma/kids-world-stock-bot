@@ -70,11 +70,20 @@ Install the ntfy app ([iOS](https://apps.apple.com/us/app/ntfy/id1625396347) /
 [Android](https://play.google.com/store/apps/details?id=io.heckel.ntfy)) and
 subscribe to the same topic you put in `NTFY_TOPIC`.
 
+### Verifying the setup
+
+Don't wait for a real restock to find out whether the wiring works:
+
+**Actions → Check stock → Run workflow → tick "Send a test notification"**
+
+That sends a test push/email through every configured channel and touches no
+state. Locally the same thing is `TEST_NOTIFICATION=1 pnpm check`.
+
 ## Local use
 
 ```sh
 pnpm install
-pnpm test         # 62 tests
+pnpm test         # 70 tests
 pnpm typecheck
 pnpm check        # one check run against the live site
 ```
