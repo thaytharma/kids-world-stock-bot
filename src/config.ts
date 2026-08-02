@@ -19,31 +19,48 @@ const trimmedList = (value: string | undefined): string[] =>
     .filter((entry) => entry !== '');
 
 /**
+ * GitHub Actions injects unset secrets and vars as empty strings, not as absent
+ * keys, so `??` is not enough — an empty value must count as "not configured".
+ */
+const str = (value: string | undefined): string | undefined => {
+  const trimmed = value?.trim();
+  return trimmed === undefined || trimmed === '' ? undefined : trimmed;
+};
+
+/**
  * Both notifiers are optional and independently configured: a missing one is
  * skipped rather than fatal, so email problems can never stop the push.
  */
 export function loadConfig(env: NodeJS.ProcessEnv): Config {
   const urls = trimmedList(env.PRODUCT_URLS);
   const mailTo = trimmedList(env.MAIL_TO);
-  const port = Number(env.SMTP_PORT ?? 587);
+
+  const smtpHost = str(env.SMTP_HOST);
+  const smtpUser = str(env.SMTP_USER);
+  const smtpPass = str(env.SMTP_PASS);
+  const port = Number(str(env.SMTP_PORT) ?? 587);
 
   const email: EmailConfig | null =
-    env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS && mailTo.length > 0
+    smtpHost && smtpUser && smtpPass && mailTo.length > 0
       ? {
-          host: env.SMTP_HOST,
+          host: smtpHost,
           port,
           secure: port === 465,
-          user: env.SMTP_USER,
-          pass: env.SMTP_PASS,
-          from: env.MAIL_FROM ?? env.SMTP_USER,
+          user: smtpUser,
+          pass: smtpPass,
+          from: str(env.MAIL_FROM) ?? smtpUser,
           to: mailTo,
         }
       : null;
 
+  const ntfyTopic = str(env.NTFY_TOPIC);
+
   return {
     urls: urls.length > 0 ? urls : DEFAULT_URLS,
-    statePath: env.STATE_PATH ?? 'state.json',
-    ntfy: env.NTFY_TOPIC ? { topic: env.NTFY_TOPIC, server: env.NTFY_SERVER ?? 'https://ntfy.sh' } : null,
+    statePath: str(env.STATE_PATH) ?? 'state.json',
+    ntfy: ntfyTopic
+      ? { topic: ntfyTopic, server: str(env.NTFY_SERVER) ?? 'https://ntfy.sh' }
+      : null,
     email,
   };
 }

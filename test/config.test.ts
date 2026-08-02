@@ -77,6 +77,75 @@ describe('loadConfig', () => {
   });
 });
 
+/**
+ * GitHub Actions passes every referenced secret and var as an empty string when
+ * it is not set, rather than omitting it. An earlier version used `??`, which
+ * only guards against undefined, and produced a request to the URL "/<topic>".
+ */
+describe('loadConfig with unset GitHub Actions values (empty strings)', () => {
+  const actionsEnvWithOnlyNtfy = {
+    PRODUCT_URLS: '',
+    NTFY_TOPIC: 'kw-leander-abc',
+    NTFY_SERVER: '',
+    SMTP_HOST: '',
+    SMTP_PORT: '',
+    SMTP_USER: '',
+    SMTP_PASS: '',
+    MAIL_FROM: '',
+    MAIL_TO: '',
+  };
+
+  it('falls back to the public ntfy server instead of an empty base url', () => {
+    expect(loadConfig(actionsEnvWithOnlyNtfy).ntfy).toEqual({
+      topic: 'kw-leander-abc',
+      server: 'https://ntfy.sh',
+    });
+  });
+
+  it('leaves email disabled rather than half-configured', () => {
+    expect(loadConfig(actionsEnvWithOnlyNtfy).email).toBeNull();
+  });
+
+  it('falls back to the default product url', () => {
+    expect(loadConfig(actionsEnvWithOnlyNtfy).urls).toEqual(DEFAULT_URLS);
+  });
+
+  it('falls back to the default state path', () => {
+    expect(loadConfig({ ...actionsEnvWithOnlyNtfy, STATE_PATH: '' }).statePath).toBe('state.json');
+  });
+
+  it('does not build a From header out of an empty MAIL_FROM', () => {
+    const config = loadConfig({
+      ...actionsEnvWithOnlyNtfy,
+      SMTP_HOST: 'smtp.gmail.com',
+      SMTP_USER: 'bot@gmail.com',
+      SMTP_PASS: 'app-password',
+      MAIL_TO: 'thay@example.com',
+    });
+    expect(config.email?.from).toBe('bot@gmail.com');
+  });
+
+  it('falls back to the default SMTP port when the var is empty', () => {
+    const config = loadConfig({
+      ...actionsEnvWithOnlyNtfy,
+      SMTP_HOST: 'h',
+      SMTP_USER: 'u',
+      SMTP_PASS: 'p',
+      MAIL_TO: 'a@b.dk',
+      SMTP_PORT: '',
+    });
+    expect(config.email?.port).toBe(587);
+  });
+
+  it('treats whitespace-only values as unset too', () => {
+    expect(loadConfig({ NTFY_TOPIC: '   ' }).ntfy).toBeNull();
+  });
+
+  it('trims stray whitespace from values that are set', () => {
+    expect(loadConfig({ NTFY_TOPIC: ' kw-abc \n' }).ntfy?.topic).toBe('kw-abc');
+  });
+});
+
 describe('fetchPage', () => {
   const html = '<html>ok</html>';
   const noSleep = async () => {};
