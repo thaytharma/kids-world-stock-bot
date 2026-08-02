@@ -1,0 +1,61 @@
+name: Check stock
+
+on:
+  schedule:
+    # Every 15 minutes, deliberately offset from the top of the hour — GitHub
+    # delays scheduled runs that pile up on :00.
+    - cron: '3,18,33,48 * * * *'
+  workflow_dispatch:
+
+# Never let two runs race on state.json.
+concurrency:
+  group: check-stock
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Check product stock
+        env:
+          PRODUCT_URLS: ${{ vars.PRODUCT_URLS }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NTFY_SERVER: ${{ vars.NTFY_SERVER }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          MAIL_FROM: ${{ secrets.MAIL_FROM }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+        run: pnpm check
+
+      # Runs even if the check failed, so a partial delivery is still recorded.
+      - name: Persist state
+        if: always()
+        run: |
+          if git diff --quiet -- state.json; then
+            echo "state unchanged"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state.json
+          git commit -m "chore: update stock state [skip ci]"
+          git push
