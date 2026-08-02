@@ -1,4 +1,14 @@
 {
   "version": 1,
-  "products": {}
+  "products": {
+    "https://www.kids-world.dk/leander-luna-ombygningssaet-til-babyseng-140-cm-hvid-p-261365.html": {
+      "status": "not_in_stock",
+      "brokenRuns": 0,
+      "brokenWarningSent": false,
+      "restockNotified": false,
+      "lastCheckedAt": "2026-08-02T20:51:07.769Z",
+      "title": "Leander Luna Ombygningssæt Til Babyseng - 140 cm - Hvid",
+      "price": "899,95 kr."
+    }
+  }
 }
