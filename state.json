@@ -1,12 +1,21 @@
 {
   "version": 1,
   "products": {
+    "https://www.csmegastore.no/i/24512506/ombyggingssett-til-luna-babyseng-140-cm-hvit": {
+      "status": "not_in_stock",
+      "brokenRuns": 0,
+      "brokenWarningSent": false,
+      "restockNotified": false,
+      "lastCheckedAt": "2026-08-02T22:02:12.968Z",
+      "title": "Ombyggingssett til Luna™ babyseng 140 cm – Hvit",
+      "price": "1.399,00 NOK"
+    },
     "https://www.kids-world.dk/leander-luna-ombygningssaet-til-babyseng-140-cm-hvid-p-261365.html": {
       "status": "not_in_stock",
       "brokenRuns": 0,
       "brokenWarningSent": false,
       "restockNotified": false,
-      "lastCheckedAt": "2026-08-02T21:59:17.475Z",
+      "lastCheckedAt": "2026-08-02T22:02:12.968Z",
       "title": "Leander Luna Ombygningssæt Til Babyseng - 140 cm - Hvid",
       "price": "899,95 kr."
     }
