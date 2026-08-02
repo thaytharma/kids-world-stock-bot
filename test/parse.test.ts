@@ -1,54 +1,152 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseProduct, parseStockStatus } from '../src/parse.js';
+import {
+  combineSignals,
+  parseProduct,
+  parseStockStatus,
+  readSignals,
+  type StockSignals,
+} from '../src/parse.js';
 
 const fixture = (name: string) =>
   readFileSync(join(import.meta.dirname, 'fixtures', name), 'utf8');
 
-describe('parseStockStatus', () => {
-  it('reads the out-of-stock marker from the real product page', () => {
-    expect(parseStockStatus(fixture('out-of-stock.html'))).toBe('not_in_stock');
+describe('readSignals on real pages', () => {
+  it('reads both signals as sold out on the watched Leander Luna kit', () => {
+    expect(readSignals(fixture('out-of-stock.html'))).toEqual({
+      marker: 'not_in_stock',
+      cartButton: 'absent',
+    });
   });
 
-  it('reads the in-stock marker from a real product page', () => {
-    expect(parseStockStatus(fixture('in-stock.html'))).toBe('in_stock');
+  it('reads both signals as sold out on a second real sold-out page', () => {
+    expect(readSignals(fixture('out-of-stock-2.html'))).toEqual({
+      marker: 'not_in_stock',
+      cartButton: 'absent',
+    });
   });
 
-  it('reports unknown rather than guessing when the marker is gone', () => {
-    expect(parseStockStatus(fixture('marker-missing.html'))).toBe('unknown');
+  it('reads both signals as in stock on a real in-stock page', () => {
+    expect(readSignals(fixture('in-stock.html'))).toEqual({
+      marker: 'in_stock',
+      cartButton: 'present',
+    });
   });
 
-  it('reports unknown when the marker value is one we do not recognise', () => {
+  it('still finds the cart button when the marker is gone', () => {
+    expect(readSignals(fixture('marker-missing.html'))).toEqual({
+      marker: 'unknown',
+      cartButton: 'present',
+    });
+  });
+});
+
+describe('marker reading', () => {
+  it('ignores the label text, which varies between in-stock products', () => {
+    const withDelivery =
+      '<span class="stockStatusBullet stockStatusBullet--in_stock"><strong>P&aring; lager - Sendes indenfor 24 timer</strong></span>';
+    expect(readSignals(withDelivery).marker).toBe('in_stock');
+  });
+
+  it('treats an unrecognised marker value as unknown', () => {
     const html = '<span class="stockStatusBullet stockStatusBullet--on_backorder">Bestilt</span>';
-    expect(parseStockStatus(html)).toBe('unknown');
+    expect(readSignals(html).marker).toBe('unknown');
   });
 
-  it('refuses to guess when several conflicting markers are present', () => {
+  it('refuses to guess between conflicting markers', () => {
     const html = `
       <span class="stockStatusBullet stockStatusBullet--not_in_stock">Udsolgt</span>
       <span class="stockStatusBullet stockStatusBullet--in_stock">På lager</span>`;
-    expect(parseStockStatus(html)).toBe('unknown');
+    expect(readSignals(html).marker).toBe('unknown');
   });
 
   it('accepts repeated identical markers', () => {
     const html = `
       <span class="stockStatusBullet stockStatusBullet--in_stock">På lager</span>
       <span class="stockStatusBullet stockStatusBullet--in_stock">På lager</span>`;
-    expect(parseStockStatus(html)).toBe('in_stock');
+    expect(readSignals(html).marker).toBe('in_stock');
+  });
+});
+
+describe('cart button detection', () => {
+  const cartButton = (html: string) => readSignals(html).cartButton;
+
+  it('matches the real button markup', () => {
+    const html =
+      '<button class="bigButton button success cartAddProduct " data-products-id="104390">L&aelig;g i kurv</button>';
+    expect(cartButton(html)).toBe('present');
   });
 
-  it('treats an empty page as unknown', () => {
+  it('is absent when there is no such button', () => {
+    expect(cartButton('<button class="button button--favorites">Gem</button>')).toBe('absent');
+  });
+
+  it('does not mistake the basket link in the site header for a buy button', () => {
+    const header = `
+      <a href="/shopping_cart.php"><span>Indk&oslash;bskurv</span></a>
+      <a href="/shopping_cart.php" class="cart-top-button button success">G&aring; til indk&oslash;bskurven</a>
+      <div id="productAddToCartBox">Tilf&oslash;jet kurv</div>`;
+    expect(cartButton(header)).toBe('absent');
+  });
+
+  it('requires the class to be on a button element', () => {
+    expect(cartButton('<div class="cartAddProduct">not a button</div>')).toBe('absent');
+  });
+});
+
+describe('combineSignals', () => {
+  const cases: Array<[StockSignals, string, boolean]> = [
+    [{ marker: 'in_stock', cartButton: 'present' }, 'in_stock', true],
+    [{ marker: 'not_in_stock', cartButton: 'absent' }, 'not_in_stock', true],
+    [{ marker: 'in_stock', cartButton: 'absent' }, 'in_stock', false],
+    [{ marker: 'not_in_stock', cartButton: 'present' }, 'in_stock', false],
+    [{ marker: 'unknown', cartButton: 'present' }, 'in_stock', false],
+    [{ marker: 'unknown', cartButton: 'absent' }, 'unknown', false],
+  ];
+
+  it.each(cases)('%o -> %s (agreed: %s)', (signals, status, agreed) => {
+    expect(combineSignals(signals)).toEqual({ status, agreed });
+  });
+
+  it('never reports not_in_stock while the item is still buyable', () => {
+    const buyable = cases.filter(([s]) => s.cartButton === 'present');
+    expect(buyable.every(([, status]) => status === 'in_stock')).toBe(true);
+  });
+
+  it('reports in_stock whenever either signal says so, to avoid missing a restock', () => {
+    for (const [signals] of cases) {
+      const eitherSaysBuyable =
+        signals.marker === 'in_stock' || signals.cartButton === 'present';
+      if (eitherSaysBuyable) expect(combineSignals(signals).status).toBe('in_stock');
+    }
+  });
+});
+
+describe('parseStockStatus', () => {
+  it('reports sold out for the watched product', () => {
+    expect(parseStockStatus(fixture('out-of-stock.html'))).toBe('not_in_stock');
+  });
+
+  it('reports in stock for a real in-stock product', () => {
+    expect(parseStockStatus(fixture('in-stock.html'))).toBe('in_stock');
+  });
+
+  it('still reports in stock from the cart button alone', () => {
+    expect(parseStockStatus(fixture('marker-missing.html'))).toBe('in_stock');
+  });
+
+  it('reports unknown only when both signals are missing', () => {
+    expect(parseStockStatus('<html><body>Ups</body></html>')).toBe('unknown');
     expect(parseStockStatus('')).toBe('unknown');
   });
 });
 
 describe('parseProduct', () => {
-  it('extracts title and price for the watched product', () => {
-    const product = parseProduct(fixture('out-of-stock.html'));
-    expect(product).toMatchObject({
+  it('extracts title, price and agreement for the watched product', () => {
+    expect(parseProduct(fixture('out-of-stock.html'))).toMatchObject({
       status: 'not_in_stock',
-      rawMarker: 'not_in_stock',
+      agreed: true,
       title: 'Leander Luna Ombygningssæt Til Babyseng - 140 cm - Hvid',
       price: '899,95 kr.',
     });
@@ -57,8 +155,15 @@ describe('parseProduct', () => {
   it('extracts details from the in-stock page', () => {
     const product = parseProduct(fixture('in-stock.html'));
     expect(product.status).toBe('in_stock');
-    expect(product.price).toBe('499,95 kr.');
-    expect(product.title).toContain('Leander Classic Bakke');
+    expect(product.agreed).toBe(true);
+    expect(product.title).toBe('Leander Classic Vange - Hvid');
+    expect(product.price).toMatch(/kr\.$/);
+  });
+
+  it('flags disagreement when only the cart button is found', () => {
+    const product = parseProduct(fixture('marker-missing.html'));
+    expect(product.status).toBe('in_stock');
+    expect(product.agreed).toBe(false);
   });
 
   it('decodes the entity-encoded Danish characters the site emits', () => {
@@ -89,7 +194,8 @@ describe('parseProduct', () => {
   it('returns nulls rather than empty strings when nothing is found', () => {
     expect(parseProduct('<html></html>')).toEqual({
       status: 'unknown',
-      rawMarker: null,
+      signals: { marker: 'unknown', cartButton: 'absent' },
+      agreed: false,
       title: null,
       price: null,
     });

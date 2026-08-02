@@ -68,7 +68,10 @@ async function main(): Promise<void> {
     const { next, notification } = decide(url, state.products[url], result, now);
     state.products[url] = next;
 
-    console.log(`${next.status.padEnd(13)} ${next.title ?? url}`);
+    const detail = result.ok
+      ? `marker=${result.snapshot.signals.marker} cart=${result.snapshot.signals.cartButton}`
+      : `error: ${result.error}`;
+    console.log(`${next.status.padEnd(13)} [${detail}] ${next.title ?? url}`);
 
     if (notification) {
       console.log(`> notifying: ${notification.title}`);

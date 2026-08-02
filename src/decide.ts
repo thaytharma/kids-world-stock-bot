@@ -69,22 +69,27 @@ export function decide(
     next.lastInStockAt = now;
     if (next.restockNotified) return { next, notification: null };
     next.restockNotified = true;
+    const uncertain = result.ok && !result.snapshot.agreed;
     return {
       next,
       notification: {
         kind: 'restock',
-        title: 'På lager nu!',
+        title: uncertain ? 'Måske på lager' : 'På lager nu!',
         body: [
-          `${label} er på lager på kids-world.dk.`,
+          uncertain
+            ? `${label} ser ud til at være på lager på kids-world.dk, men signalerne er uenige — tjek siden.`
+            : `${label} er på lager på kids-world.dk.`,
           // The site's price already ends in "kr." — no extra full stop.
           next.price !== undefined ? `Pris: ${next.price}` : null,
-          'Skynd dig at bestille.',
+          uncertain && result.ok
+            ? `(marker: ${result.snapshot.signals.marker}, kurv-knap: ${result.snapshot.signals.cartButton})`
+            : 'Skynd dig at bestille.',
         ]
           .filter((line): line is string => line !== null)
           .join('\n'),
         url,
         priority: 5,
-        tags: ['rotating_light', 'baby_symbol'],
+        tags: uncertain ? ['warning', 'baby_symbol'] : ['rotating_light', 'baby_symbol'],
       },
     };
   }
@@ -92,7 +97,7 @@ export function decide(
   if (!healthy && brokenRuns >= BROKEN_RUN_THRESHOLD && !next.brokenWarningSent) {
     next.brokenWarningSent = true;
     const reason = result.ok
-      ? 'the stock marker could not be found on the page (layout change?)'
+      ? 'neither the stock marker nor the cart button could be found (layout change?)'
       : `the page could not be fetched: ${result.error}`;
     return {
       next,

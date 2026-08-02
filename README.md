@@ -9,20 +9,47 @@ which customer service confirmed is on their replenishment list with no ETA.
 
 ## How it works
 
-The product pages are server-rendered, so no headless browser is needed. Stock
-status comes from a single marker in the HTML:
+The product pages are server-rendered, so no headless browser is needed. Two
+**independent** signals are read from the HTML:
 
-| HTML | Meaning |
-| --- | --- |
-| `stockStatusBullet--in_stock` → `På lager` | in stock |
-| `stockStatusBullet--not_in_stock` → `Udsolgt` | sold out |
-| marker absent, unrecognised, or ambiguous | `unknown` |
+1. **The status marker**
 
-The add-to-cart button is rendered client-side, so it cannot corroborate the
-marker — the marker is a single point of failure. That is why `unknown` exists as
-a distinct state instead of being read as "sold out": after three consecutive
-unknown or failed checks the bot notifies **you** that it is probably broken. A
-scraper that silently stops working is what would actually cost you the product.
+   | HTML | Meaning |
+   | --- | --- |
+   | `stockStatusBullet--in_stock` → `På lager` | in stock |
+   | `stockStatusBullet--not_in_stock` → `Udsolgt` | sold out |
+
+   Only the class modifier is read, never the label — the label varies
+   (`På lager`, `På lager - Sendes indenfor 24 timer`).
+
+2. **The `Læg i kurv` button** (`<button class="... cartAddProduct">`), which the
+   server omits entirely when the item cannot be bought.
+
+Verified across 45 live pages — 40 in stock, 5 sold out — with zero
+disagreements between the two signals.
+
+### Why either signal is enough
+
+The two signals are combined in favour of catching a restock, because the costs
+are asymmetric: a false alarm wastes one click, a missed restock loses the
+product. So if *either* signal says the item is buyable, the bot notifies.
+
+| marker | cart button | result | wording |
+| --- | --- | --- | --- |
+| `in_stock` | present | in stock | "På lager nu!" |
+| `not_in_stock` | absent | sold out | silent |
+| `in_stock` | absent | in stock | "Måske på lager" + which signals disagreed |
+| `not_in_stock` | present | in stock | "Måske på lager" + which signals disagreed |
+| unknown | present | in stock | "Måske på lager" + which signals disagreed |
+| unknown | absent | unknown | see below |
+
+Only when **both** signals vanish does the bot conclude nothing. After three
+consecutive such checks (or fetch failures) it notifies **you** that it is
+probably broken. A scraper that silently stops working is what would actually
+cost you the kit.
+
+Sold-out products are hidden from the site's own search and category listings,
+which is why the target is reachable only by direct URL.
 
 ### Notification rules
 
@@ -83,7 +110,7 @@ state. Locally the same thing is `TEST_NOTIFICATION=1 pnpm check`.
 
 ```sh
 pnpm install
-pnpm test         # 70 tests
+pnpm test         # 94 tests
 pnpm typecheck
 pnpm check        # one check run against the live site
 ```

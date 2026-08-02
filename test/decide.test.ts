@@ -18,7 +18,28 @@ type StockLike = ProductState['status'];
 
 const page = (status: 'in_stock' | 'not_in_stock' | 'unknown'): CheckResult => ({
   ok: true,
-  snapshot: { status, rawMarker: status, title: 'Leander Luna', price: '899,95 kr.' },
+  snapshot: {
+    status,
+    signals: {
+      marker: status,
+      cartButton: status === 'in_stock' ? 'present' : 'absent',
+    },
+    agreed: status !== 'unknown',
+    title: 'Leander Luna',
+    price: '899,95 kr.',
+  },
+});
+
+/** In stock according to one signal only — e.g. the marker vanished after a redesign. */
+const disagreeingPage = (): CheckResult => ({
+  ok: true,
+  snapshot: {
+    status: 'in_stock',
+    signals: { marker: 'unknown', cartButton: 'present' },
+    agreed: false,
+    title: 'Leander Luna',
+    price: '899,95 kr.',
+  },
 });
 
 const failure = (error = 'HTTP 503'): CheckResult => ({ ok: false, error });
@@ -69,6 +90,45 @@ describe('decide — restock notification', () => {
 
     const later = decide(URL, inStock.next, page('not_in_stock'), '2026-08-03T20:00:00.000Z');
     expect(later.next.lastInStockAt).toBe(NOW);
+  });
+});
+
+describe('decide — restock on a single signal', () => {
+  it('still notifies when only one signal says in stock', () => {
+    const { notification } = decide(URL, seen('not_in_stock'), disagreeingPage(), NOW);
+    expect(notification?.kind).toBe('restock');
+    expect(notification?.priority).toBe(5);
+  });
+
+  it('says the signals disagreed so the page gets checked by hand', () => {
+    const { notification } = decide(URL, seen('not_in_stock'), disagreeingPage(), NOW);
+    expect(notification?.title).toBe('Måske på lager');
+    expect(notification?.body).toContain('uenige');
+    expect(notification?.body).toContain('marker: unknown');
+    expect(notification?.body).toContain('kurv-knap: present');
+  });
+
+  it('does not claim certainty by telling him to hurry up and order', () => {
+    const { notification } = decide(URL, seen('not_in_stock'), disagreeingPage(), NOW);
+    expect(notification?.body).not.toContain('Skynd dig');
+  });
+
+  it('uses the confident wording when both signals agree', () => {
+    const { notification } = decide(URL, seen('not_in_stock'), page('in_stock'), NOW);
+    expect(notification?.title).toBe('På lager nu!');
+    expect(notification?.body).toContain('Skynd dig');
+    expect(notification?.body).not.toContain('uenige');
+  });
+
+  it('treats a one-signal restock as a real restock for dedupe purposes', () => {
+    const first = decide(URL, seen('not_in_stock'), disagreeingPage(), NOW);
+    expect(first.next.restockNotified).toBe(true);
+    expect(decide(URL, first.next, page('in_stock'), NOW).notification).toBeNull();
+  });
+
+  it('does not count a one-signal restock as a broken run', () => {
+    const { next } = decide(URL, seen('not_in_stock'), disagreeingPage(), NOW);
+    expect(next.brokenRuns).toBe(0);
   });
 });
 
