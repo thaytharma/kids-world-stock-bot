@@ -4,6 +4,8 @@ const USER_AGENT =
 export interface FetchOptions {
   attempts?: number;
   timeoutMs?: number;
+  /** So each shop is asked in its own language. */
+  acceptLanguage?: string;
   /** Injected in tests to avoid real waiting. */
   sleep?: (ms: number) => Promise<void>;
   fetchImpl?: typeof fetch;
@@ -14,7 +16,13 @@ const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(r
 /** GET a product page as a browser would, retrying transient failures. */
 export async function fetchPage(
   url: string,
-  { attempts = 3, timeoutMs = 20_000, sleep = defaultSleep, fetchImpl = fetch }: FetchOptions = {},
+  {
+    attempts = 3,
+    timeoutMs = 20_000,
+    acceptLanguage = 'da-DK,da;q=0.9,en;q=0.8',
+    sleep = defaultSleep,
+    fetchImpl = fetch,
+  }: FetchOptions = {},
 ): Promise<string> {
   let lastError = '';
 
@@ -26,7 +34,7 @@ export async function fetchPage(
         headers: {
           'User-Agent': USER_AGENT,
           Accept: 'text/html,application/xhtml+xml',
-          'Accept-Language': 'da-DK,da;q=0.9,en;q=0.8',
+          'Accept-Language': acceptLanguage,
         },
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);

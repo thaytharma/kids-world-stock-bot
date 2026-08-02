@@ -3,14 +3,15 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   combineSignals,
+  kidsWorld,
   parseProduct,
   parseStockStatus,
   readSignals,
   type StockSignals,
-} from '../src/parse.js';
+} from '../../src/sites/kids-world.js';
 
 const fixture = (name: string) =>
-  readFileSync(join(import.meta.dirname, 'fixtures', name), 'utf8');
+  readFileSync(join(import.meta.dirname, '..', 'fixtures', name), 'utf8');
 
 describe('readSignals on real pages', () => {
   it('reads both signals as sold out on the watched Leander Luna kit', () => {
@@ -193,11 +194,28 @@ describe('parseProduct', () => {
 
   it('returns nulls rather than empty strings when nothing is found', () => {
     expect(parseProduct('<html></html>')).toEqual({
+      siteLabel: 'kids-world.dk',
       status: 'unknown',
-      signals: { marker: 'unknown', cartButton: 'absent' },
+      signals: { marker: 'unknown', 'kurv-knap': 'absent' },
       agreed: false,
       title: null,
       price: null,
     });
+  });
+});
+
+describe('adapter', () => {
+  it('claims its own hostnames, with or without www', () => {
+    expect(kidsWorld.matches('https://www.kids-world.dk/foo-p-1.html')).toBe(true);
+    expect(kidsWorld.matches('https://kids-world.dk/foo-p-1.html')).toBe(true);
+  });
+
+  it('does not claim the other shop, or a lookalike host', () => {
+    expect(kidsWorld.matches('https://www.csmegastore.no/i/24512506/x')).toBe(false);
+    expect(kidsWorld.matches('https://kids-world.dk.evil.example/foo')).toBe(false);
+  });
+
+  it('asks the shop for Danish', () => {
+    expect(kidsWorld.acceptLanguage).toMatch(/^da-DK/);
   });
 });

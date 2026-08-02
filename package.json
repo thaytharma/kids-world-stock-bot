@@ -1,9 +1,9 @@
 {
-  "name": "kids-world-stock-bot",
+  "name": "luna-kit-stock-bot",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Watches kids-world.dk product pages and notifies when they come back in stock",
+  "description": "Watches kids-world.dk and csmegastore.no, and notifies when the Leander Luna conversion kit is back in stock",
   "scripts": {
     "check": "tsx src/index.ts",
     "test": "vitest run",

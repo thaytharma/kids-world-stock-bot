@@ -3,9 +3,14 @@ import { DEFAULT_URLS, loadConfig } from '../src/config.js';
 import { fetchPage } from '../src/fetch.js';
 
 describe('loadConfig', () => {
-  it('watches the Leander Luna kit by default', () => {
+  it('watches the Leander Luna kit at both shops by default', () => {
     expect(loadConfig({}).urls).toEqual(DEFAULT_URLS);
     expect(DEFAULT_URLS[0]).toContain('leander-luna-ombygningssaet');
+    expect(DEFAULT_URLS[1]).toContain('ombyggingssett-til-luna-babyseng');
+  });
+
+  it('keeps the csmegastore URL free of the ?sq= tracking parameter, since it is the state key', () => {
+    expect(DEFAULT_URLS[1]).not.toContain('?');
   });
 
   it('accepts a comma-separated list and trims it', () => {
@@ -159,6 +164,17 @@ describe('fetchPage', () => {
     expect(headers['User-Agent']).toContain('Mozilla/5.0');
     expect(headers['Accept-Language']).toContain('da-DK');
     expect(init.redirect).toBe('follow');
+  });
+
+  it('asks each shop in its own language', async () => {
+    const fetchImpl = vi.fn(async () => new Response(html, { status: 200 }));
+    await fetchPage('https://www.csmegastore.no/i/1/x', {
+      acceptLanguage: 'nb-NO,nb;q=0.9',
+      fetchImpl: fetchImpl as never,
+    });
+
+    const init = (fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[1];
+    expect((init.headers as Record<string, string>)['Accept-Language']).toContain('nb-NO');
   });
 
   it('retries a transient server error and succeeds', async () => {

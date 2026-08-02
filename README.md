@@ -1,16 +1,27 @@
-# kids-world stock bot
+# luna kit stock bot
 
-Watches product pages on [kids-world.dk](https://www.kids-world.dk) and pushes a
-notification the moment a sold-out item is back in stock.
+Watches product pages and pushes a notification the moment a sold-out item is
+back in stock.
 
-Default target: **Leander Luna Ombygningssæt Til Babyseng – 140 cm – Hvid**
-([product page](https://www.kids-world.dk/leander-luna-ombygningssaet-til-babyseng-140-cm-hvid-p-261365.html)),
-which customer service confirmed is on their replenishment list with no ETA.
+Default target: the **Leander Luna conversion kit for the 140 cm cot**, watched
+at both shops that sell it:
+
+| Shop | Product page |
+| --- | --- |
+| [kids-world.dk](https://www.kids-world.dk) | [Leander Luna Ombygningssæt Til Babyseng – 140 cm – Hvid](https://www.kids-world.dk/leander-luna-ombygningssaet-til-babyseng-140-cm-hvid-p-261365.html) |
+| [csmegastore.no](https://www.csmegastore.no) | [Ombyggingssett til Luna™ babyseng 140 cm – Hvit](https://www.csmegastore.no/i/24512506/ombyggingssett-til-luna-babyseng-140-cm-hvit) |
+
+kids-world's customer service confirmed the kit is on their replenishment list
+with no ETA. Both are sold out as of August 2026.
 
 ## How it works
 
-The product pages are server-rendered, so no headless browser is needed. Two
-**independent** signals are read from the HTML:
+The product pages are server-rendered, so no headless browser is needed. Each
+shop has its own adapter in `src/sites/`, because **they do not share a single
+stock signal** — see the csmegastore trap below. Every adapter reads two
+**independent** signals and reports which ones it saw.
+
+### kids-world.dk
 
 1. **The status marker**
 
@@ -28,28 +39,60 @@ The product pages are server-rendered, so no headless browser is needed. Two
 Verified across 45 live pages — 40 in stock, 5 sold out — with zero
 disagreements between the two signals.
 
+### csmegastore.no
+
+1. **The schema.org offer availability**
+
+   | HTML | Meaning |
+   | --- | --- |
+   | `<meta itemprop="availability" content=".../InStock">` | in stock |
+   | `<meta itemprop="availability" content=".../OutOfStock">` | sold out |
+
+2. **The stock bullet colour** (`<span class="stock green">`)
+
+   | Colour | Meaning |
+   | --- | --- |
+   | green | in stock |
+   | yellow | `Fjernlager` / few left — still orderable, so in stock |
+   | red | `Ikke på lager` |
+
+Verified across 49 live pages — 45 in stock (39 green, 6 yellow), 4 sold out
+(all red) — with zero disagreements.
+
+> **The add-to-basket button is deliberately *not* a signal here.** This shop
+> renders `Legg i handlevogn` on every product page, including sold-out ones.
+> Reusing kids-world's "cart button ⇒ buyable" rule would report the watched kit
+> as in stock on every single run. This is pinned by a regression test.
+
+Non-product URLs on this shop answer `200` with the site chrome and no product
+markup, which reads as `unknown` and so trips the broken-bot warning rather than
+looking like a permanent "sold out".
+
 ### Why either signal is enough
 
-The two signals are combined in favour of catching a restock, because the costs
-are asymmetric: a false alarm wastes one click, a missed restock loses the
+Each shop's two signals are combined in favour of catching a restock, because the
+costs are asymmetric: a false alarm wastes one click, a missed restock loses the
 product. So if *either* signal says the item is buyable, the bot notifies.
 
-| marker | cart button | result | wording |
+| signal A | signal B | result | wording |
 | --- | --- | --- | --- |
-| `in_stock` | present | in stock | "På lager nu!" |
-| `not_in_stock` | absent | sold out | silent |
-| `in_stock` | absent | in stock | "Måske på lager" + which signals disagreed |
-| `not_in_stock` | present | in stock | "Måske på lager" + which signals disagreed |
-| unknown | present | in stock | "Måske på lager" + which signals disagreed |
-| unknown | absent | unknown | see below |
+| in stock | in stock | in stock | "På lager nu!" |
+| sold out | sold out | sold out | silent |
+| in stock | sold out | in stock | "Måske på lager" + which signals disagreed |
+| sold out | in stock | in stock | "Måske på lager" + which signals disagreed |
+| unknown | in stock | in stock | "Måske på lager" + which signals disagreed |
+| unknown | sold out | unknown | see below |
 
-Only when **both** signals vanish does the bot conclude nothing. After three
-consecutive such checks (or fetch failures) it notifies **you** that it is
-probably broken. A scraper that silently stops working is what would actually
-cost you the kit.
+Only when **neither** signal indicates something buyable *and* they do not agree
+does the bot conclude nothing. After three consecutive such checks (or fetch
+failures) it notifies **you** that it is probably broken. A scraper that silently
+stops working is what would actually cost you the kit.
 
-Sold-out products are hidden from the site's own search and category listings,
-which is why the target is reachable only by direct URL.
+On kids-world.dk, sold-out products are hidden from the site's own search and
+category listings, which is why that target is reachable only by direct URL.
+
+Alerts stay in Danish for both shops and name which shop the product turned up
+in; the Norwegian shop's price is reported in NOK.
 
 ### Notification rules
 
@@ -59,6 +102,8 @@ which is why the target is reachable only by direct URL.
 | in stock → in stock (already notified) | silent |
 | → sold out | silent, and re-arms the next restock alert |
 | 3× consecutive unknown / fetch failure | ⚠️ one "bot may be broken" alert |
+
+Each URL is tracked independently, so the two shops notify separately.
 
 `state.json` is committed back by the workflow so state survives between runs. A
 notification is only recorded as sent if at least one channel accepted it —
@@ -88,8 +133,12 @@ and one channel failing never silences the other.
 
 | Variable | Notes |
 | --- | --- |
-| `PRODUCT_URLS` | Comma-separated product URLs. Defaults to the Leander Luna kit. |
+| `PRODUCT_URLS` | Comma-separated product URLs. **Overrides the defaults entirely** — if you set it, list every URL you want watched. Leave it unset to watch both shops' Luna kit. |
 | `NTFY_SERVER` | Defaults to `https://ntfy.sh`. Set only if self-hosting. |
+
+Only kids-world.dk and csmegastore.no URLs can be parsed. A URL from any other
+host fails loudly rather than being guessed at, so it shows up as a broken-bot
+alert instead of a product that silently never restocks.
 
 ### Receiving the push
 
@@ -110,9 +159,9 @@ state. Locally the same thing is `TEST_NOTIFICATION=1 pnpm check`.
 
 ```sh
 pnpm install
-pnpm test         # 94 tests
+pnpm test         # 153 tests
 pnpm typecheck
-pnpm check        # one check run against the live site
+pnpm check        # one check run against both live sites
 ```
 
 Put credentials in a `.env` file (gitignored) and run:
@@ -135,5 +184,7 @@ STATE_PATH=/tmp/state.json pnpm check
 - **GitHub disables scheduled workflows after 60 days of repository inactivity.**
   The bot's own `state.json` commits may not reset that timer. GitHub emails you
   before disabling — push any commit, or re-enable it from the Actions tab.
-- The parser is specific to kids-world.dk's markup. Adding another retailer means
-  adding another parse module; the notification and state layers are generic.
+- Each parser is specific to one shop's markup. Adding a retailer means adding
+  one adapter in `src/sites/` and registering it; the fetch, notification and
+  state layers are generic. Don't assume a new shop's signals resemble an
+  existing one's — csmegastore.no is the cautionary example.

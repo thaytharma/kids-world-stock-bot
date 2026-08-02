@@ -10,6 +10,10 @@ export interface Config {
 
 export const DEFAULT_URLS = [
   'https://www.kids-world.dk/leander-luna-ombygningssaet-til-babyseng-140-cm-hvid-p-261365.html',
+  // Same conversion kit at the Norwegian shop. The product page also works with
+  // a ?sq= search-tracking parameter, but the URL is the state key, so keep the
+  // canonical one.
+  'https://www.csmegastore.no/i/24512506/ombyggingssett-til-luna-babyseng-140-cm-hvit',
 ];
 
 const trimmedList = (value: string | undefined): string[] =>

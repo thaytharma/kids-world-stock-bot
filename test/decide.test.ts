@@ -19,10 +19,11 @@ type StockLike = ProductState['status'];
 const page = (status: 'in_stock' | 'not_in_stock' | 'unknown'): CheckResult => ({
   ok: true,
   snapshot: {
+    siteLabel: 'kids-world.dk',
     status,
     signals: {
       marker: status,
-      cartButton: status === 'in_stock' ? 'present' : 'absent',
+      'kurv-knap': status === 'in_stock' ? 'present' : 'absent',
     },
     agreed: status !== 'unknown',
     title: 'Leander Luna',
@@ -34,11 +35,25 @@ const page = (status: 'in_stock' | 'not_in_stock' | 'unknown'): CheckResult => (
 const disagreeingPage = (): CheckResult => ({
   ok: true,
   snapshot: {
+    siteLabel: 'kids-world.dk',
     status: 'in_stock',
-    signals: { marker: 'unknown', cartButton: 'present' },
+    signals: { marker: 'unknown', 'kurv-knap': 'present' },
     agreed: false,
     title: 'Leander Luna',
     price: '899,95 kr.',
+  },
+});
+
+/** The same kit at the Norwegian shop, which reads a different signal pair. */
+const norwegianPage = (): CheckResult => ({
+  ok: true,
+  snapshot: {
+    siteLabel: 'csmegastore.no',
+    status: 'in_stock',
+    signals: { lagerstatus: 'instock', 'lager-farve': 'green' },
+    agreed: true,
+    title: 'Ombyggingssett til Luna™ babyseng 140 cm – Hvit',
+    price: '1.399,00 NOK',
   },
 });
 
@@ -129,6 +144,27 @@ describe('decide — restock on a single signal', () => {
   it('does not count a one-signal restock as a broken run', () => {
     const { next } = decide(URL, seen('not_in_stock'), disagreeingPage(), NOW);
     expect(next.brokenRuns).toBe(0);
+  });
+});
+
+describe('decide — naming the shop', () => {
+  it('names kids-world.dk when the reading came from there', () => {
+    const { notification } = decide(URL, seen('not_in_stock'), page('in_stock'), NOW);
+    expect(notification?.body).toContain('på lager på kids-world.dk');
+  });
+
+  it('names csmegastore.no when the reading came from there', () => {
+    const csUrl = 'https://www.csmegastore.no/i/24512506/ombyggingssett-til-luna-babyseng-140-cm-hvit';
+    const { notification } = decide(csUrl, seen('not_in_stock'), norwegianPage(), NOW);
+    expect(notification?.body).toContain('på lager på csmegastore.no');
+    expect(notification?.body).not.toContain('kids-world.dk');
+    expect(notification?.body).toContain('Pris: 1.399,00 NOK');
+    expect(notification?.url).toBe(csUrl);
+  });
+
+  it('links to the shop the product was found in, not the other one', () => {
+    const csUrl = 'https://www.csmegastore.no/i/24512506/x';
+    expect(decide(csUrl, seen('not_in_stock'), norwegianPage(), NOW).notification?.url).toBe(csUrl);
   });
 });
 

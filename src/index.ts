@@ -1,14 +1,16 @@
 import { loadConfig, type Config } from './config.js';
-import { decide, type CheckResult, type Notification } from './decide.js';
+import { decide, describeSignals, type CheckResult, type Notification } from './decide.js';
 import { fetchPage } from './fetch.js';
-import { parseProduct } from './parse.js';
+import { siteFor } from './sites/index.js';
 import { loadState, saveState } from './state.js';
 import { sendEmail } from './notify/email.js';
 import { sendNtfy } from './notify/ntfy.js';
 
 async function check(url: string): Promise<CheckResult> {
   try {
-    return { ok: true, snapshot: parseProduct(await fetchPage(url)) };
+    const site = siteFor(url);
+    const html = await fetchPage(url, { acceptLanguage: site.acceptLanguage });
+    return { ok: true, snapshot: site.parse(html) };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
@@ -68,9 +70,7 @@ async function main(): Promise<void> {
     const { next, notification } = decide(url, state.products[url], result, now);
     state.products[url] = next;
 
-    const detail = result.ok
-      ? `marker=${result.snapshot.signals.marker} cart=${result.snapshot.signals.cartButton}`
-      : `error: ${result.error}`;
+    const detail = result.ok ? describeSignals(result.snapshot.signals) : `error: ${result.error}`;
     console.log(`${next.status.padEnd(13)} [${detail}] ${next.title ?? url}`);
 
     if (notification) {

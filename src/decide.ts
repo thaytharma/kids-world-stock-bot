@@ -19,6 +19,13 @@ export interface CheckOutcome {
 /** Consecutive unparseable/failed runs before we assume the bot itself is broken. */
 export const BROKEN_RUN_THRESHOLD = 3;
 
+/** Each shop names its own signals, so just list whatever it reported. */
+export function describeSignals(signals: Record<string, string>): string {
+  return Object.entries(signals)
+    .map(([name, value]) => `${name}: ${value}`)
+    .join(', ');
+}
+
 export type CheckResult =
   | { ok: true; snapshot: ProductSnapshot }
   | { ok: false; error: string };
@@ -70,6 +77,7 @@ export function decide(
     if (next.restockNotified) return { next, notification: null };
     next.restockNotified = true;
     const uncertain = result.ok && !result.snapshot.agreed;
+    const shop = result.ok ? result.snapshot.siteLabel : 'butikken';
     return {
       next,
       notification: {
@@ -77,13 +85,11 @@ export function decide(
         title: uncertain ? 'Måske på lager' : 'På lager nu!',
         body: [
           uncertain
-            ? `${label} ser ud til at være på lager på kids-world.dk, men signalerne er uenige — tjek siden.`
-            : `${label} er på lager på kids-world.dk.`,
-          // The site's price already ends in "kr." — no extra full stop.
+            ? `${label} ser ud til at være på lager på ${shop}, men signalerne er uenige — tjek siden.`
+            : `${label} er på lager på ${shop}.`,
+          // kids-world's price already ends in "kr." — no extra full stop.
           next.price !== undefined ? `Pris: ${next.price}` : null,
-          uncertain && result.ok
-            ? `(marker: ${result.snapshot.signals.marker}, kurv-knap: ${result.snapshot.signals.cartButton})`
-            : 'Skynd dig at bestille.',
+          uncertain && result.ok ? `(${describeSignals(result.snapshot.signals)})` : 'Skynd dig at bestille.',
         ]
           .filter((line): line is string => line !== null)
           .join('\n'),
@@ -97,7 +103,7 @@ export function decide(
   if (!healthy && brokenRuns >= BROKEN_RUN_THRESHOLD && !next.brokenWarningSent) {
     next.brokenWarningSent = true;
     const reason = result.ok
-      ? 'neither the stock marker nor the cart button could be found (layout change?)'
+      ? 'no usable stock signal could be read from the page (layout change?)'
       : `the page could not be fetched: ${result.error}`;
     return {
       next,
