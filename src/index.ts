@@ -35,8 +35,30 @@ async function deliver(config: Config, notification: Notification): Promise<bool
   return results.some((result) => result.status === 'fulfilled');
 }
 
+/**
+ * Verify the notification wiring without waiting for a real restock. Touches no
+ * state, so it can be run any time.
+ */
+async function sendTestNotification(config: Config): Promise<void> {
+  const delivered = await deliver(config, {
+    kind: 'restock',
+    title: 'Stock bot test',
+    body: 'Test notification — the bot is wired up correctly. Æøå works too.',
+    url: config.urls[0] ?? 'https://www.kids-world.dk',
+    priority: 3,
+    tags: ['white_check_mark'],
+  });
+  if (!delivered) process.exitCode = 1;
+}
+
 async function main(): Promise<void> {
   const config = loadConfig(process.env);
+
+  if (process.env.TEST_NOTIFICATION) {
+    await sendTestNotification(config);
+    return;
+  }
+
   const state = await loadState(config.statePath);
   const now = new Date().toISOString();
   let failedDelivery = false;
